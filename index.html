@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#000000">
+    <meta name="theme-color" content="#000001">
     <title>Northern Line Tracker</title>
     <style>
         body { background-color: #000; color: #fff; font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 20px; display: flex; justify-content: center; }
@@ -12,11 +12,16 @@
         .line-badge { border: 2px solid #fff; display: inline-block; padding: 2px 10px; font-weight: bold; text-transform: uppercase; margin-bottom: 10px; }
         
         .status-bar { display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px; }
-        #status-text { font-size: 1.1rem; }
-        #crowding-text { font-size: 0.9rem; color: #aaa; text-transform: uppercase; letter-spacing: 0.5px; }
+        #status-text { font-size: 1.1rem; font-weight: bold; }
+        #crowding-text { font-size: 0.9rem; color: #aaa; text-transform: uppercase; }
 
         .status-good { color: #00ff00; }
         .status-bad { color: #ff4500; }
+
+        #disruption-detail { 
+            background: #221111; border: 1px solid #ff4500; padding: 12px; 
+            margin: 15px 0; font-size: 0.9rem; line-height: 1.4; display: none; border-radius: 4px;
+        }
         
         .controls { margin: 20px 0; background: #111; padding: 15px; border-radius: 8px; }
         select { width: 100%; padding: 12px; background: #222; color: #fff; border: 1px solid #444; font-size: 1rem; border-radius: 4px; outline: none; }
@@ -38,6 +43,7 @@
                 <div id="status-text">Connecting...</div>
                 <div id="crowding-text">Crowding: --</div>
             </div>
+            <div id="disruption-detail"></div>
         </header>
 
         <div class="controls">
@@ -56,24 +62,12 @@
         const statusEl = document.getElementById('status-text');
         const crowdingEl = document.getElementById('crowding-text');
         const listEl = document.getElementById('arrivals-list');
+        const disruptionEl = document.getElementById('disruption-detail');
 
         function getBranch(train) {
-            // Combine all text fields where TfL might hide the branch info
-            const searchString = [
-                train.towards,
-                train.destinationName,
-                train.platformName,
-                train.currentLocation
-            ].join(" ").toLowerCase();
-
+            const searchString = [train.towards, train.destinationName, train.platformName, train.currentLocation].join(" ").toLowerCase();
             if (searchString.includes("via bank")) return "via Bank";
             if (searchString.includes("via charing") || searchString.includes("via cx")) return "via Charing X";
-            
-            // Edge case: Northbound trains from Colliers Wood are mostly Bank or CX
-            // If the search above fails, we check the platform name again specifically
-            if (train.platformName.toLowerCase().includes("via bank")) return "via Bank";
-            if (train.platformName.toLowerCase().includes("via charing")) return "via Charing X";
-
             return ""; 
         }
 
@@ -89,19 +83,25 @@
                 const sData = await sRes.json();
                 const aData = await aRes.json();
                 
-                // Status Update
-                const desc = sData[0].lineStatuses[0].statusSeverityDescription;
+                const statusObj = sData[0].lineStatuses[0];
+                const desc = statusObj.statusSeverityDescription;
+                const reason = statusObj.reason || "";
+
                 statusEl.innerText = `● ${desc}`;
                 statusEl.className = desc === "Good Service" ? "status-good" : "status-bad";
 
-                // Crowding Update
-                if (cRes.ok) {
-                    const cData = await cRes.json();
-                    const level = cData.crowding?.general?.summary || "Normal";
-                    crowdingEl.innerText = `Crowding: ${level}`;
+                if (desc !== "Good Service" && reason) {
+                    disruptionEl.innerText = reason;
+                    disruptionEl.style.display = "block";
+                } else {
+                    disruptionEl.style.display = "none";
                 }
 
-                // Arrivals Update
+                if (cRes.ok) {
+                    const cData = await cRes.json();
+                    crowdingEl.innerText = `Crowding: ${cData.crowding?.general?.summary || "Normal"}`;
+                }
+
                 listEl.innerHTML = '';
                 const filtered = aData
                     .filter(t => t.platformName.toLowerCase().includes(platformKey.toLowerCase()))
